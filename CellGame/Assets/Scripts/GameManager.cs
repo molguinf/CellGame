@@ -23,8 +23,12 @@ public class GameManager : MonoBehaviour
     private int score = 0;
     private int currentRound = 1;
     private bool isRoundActive = false;
+    private bool gameFinished = false;
+
+    private int nextLineageId = 1;
 
     private List<CellAgent> activeCells = new List<CellAgent>();
+    private List<CellLineage> successfulLineages = new List<CellLineage>();
 
     void Awake()
     {
@@ -51,7 +55,7 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
-        if (!isRoundActive)
+        if (!isRoundActive || gameFinished)
         {
             return;
         }
@@ -60,7 +64,10 @@ public class GameManager : MonoBehaviour
 
         if (timerText != null)
         {
-            timerText.text = "Tiempo: " + Mathf.CeilToInt(currentTimer).ToString() + "s";
+            timerText.text =
+                "Tiempo: " +
+                Mathf.CeilToInt(currentTimer).ToString() +
+                "s";
         }
 
         if (currentTimer <= 0f)
@@ -71,6 +78,11 @@ public class GameManager : MonoBehaviour
 
     void StartNewRound()
     {
+        if (gameFinished)
+        {
+            return;
+        }
+
         currentTimer = roundDuration;
         isRoundActive = true;
 
@@ -94,19 +106,23 @@ public class GameManager : MonoBehaviour
 
         if (environment == 0)
         {
-            backgroundRenderer.color = new Color(0.15f, 0.45f, 0.20f);
+            backgroundRenderer.color =
+                new Color(0.15f, 0.45f, 0.20f);
         }
         else if (environment == 1)
         {
-            backgroundRenderer.color = new Color(0.15f, 0.30f, 0.55f);
+            backgroundRenderer.color =
+                new Color(0.15f, 0.30f, 0.55f);
         }
         else if (environment == 2)
         {
-            backgroundRenderer.color = new Color(0.45f, 0.45f, 0.45f);
+            backgroundRenderer.color =
+                new Color(0.45f, 0.45f, 0.45f);
         }
         else
         {
-            backgroundRenderer.color = new Color(0.45f, 0.20f, 0.50f);
+            backgroundRenderer.color =
+                new Color(0.45f, 0.20f, 0.50f);
         }
     }
 
@@ -118,7 +134,8 @@ public class GameManager : MonoBehaviour
 
         for (int i = 0; i < cellCount; i++)
         {
-            GameObject selectedPrefab = cellPrefabs[Random.Range(0, cellPrefabs.Length)];
+            GameObject selectedPrefab =
+                cellPrefabs[Random.Range(0, cellPrefabs.Length)];
 
             Vector3 spawnPosition = GetRandomScreenPosition();
 
@@ -128,46 +145,158 @@ public class GameManager : MonoBehaviour
                 Quaternion.identity
             );
 
-            CellAgent agent = newCellObj.GetComponent<CellAgent>();
+            CellAgent agent =
+                newCellObj.GetComponent<CellAgent>();
 
             if (agent == null)
             {
                 agent = newCellObj.AddComponent<CellAgent>();
             }
 
-            float randomSize = Random.Range(0.8f, 2.0f);
+            bool createFromSurvivor = false;
 
-            Color randomColor = new Color(
-                Random.value,
-                Random.value,
-                Random.value,
-                1f
-            );
+            if (successfulLineages.Count > 0)
+            {
+                float chance = Random.value;
 
-            agent.ApplyTraits(randomSize, randomColor);
+                if (chance < 0.7f)
+                {
+                    createFromSurvivor = true;
+                }
+            }
+
+            if (createFromSurvivor)
+            {
+                CreateFromSuccessfulLineage(agent);
+            }
+            else
+            {
+                CreateRandomCell(agent);
+            }
 
             activeCells.Add(agent);
         }
+    }
+
+    void CreateRandomCell(CellAgent agent)
+    {
+        float randomSize = Random.Range(0.8f, 2.0f);
+
+        Color randomColor = new Color(
+            Random.value,
+            Random.value,
+            Random.value,
+            1f
+        );
+
+        int newId = nextLineageId;
+        nextLineageId++;
+
+        agent.ApplyTraits(
+            randomSize,
+            randomColor,
+            newId,
+            0
+        );
+    }
+
+    void CreateFromSuccessfulLineage(CellAgent agent)
+    {
+        CellLineage parent =
+            successfulLineages[
+                Random.Range(0, successfulLineages.Count)
+            ];
+
+        float sizeVariation =
+            Random.Range(-0.15f, 0.15f);
+
+        float newSize =
+            Mathf.Clamp(
+                parent.size + sizeVariation,
+                0.4f,
+                2.5f
+            );
+
+        float redVariation =
+            Random.Range(-0.10f, 0.10f);
+
+        float greenVariation =
+            Random.Range(-0.10f, 0.10f);
+
+        float blueVariation =
+            Random.Range(-0.10f, 0.10f);
+
+        Color newColor = new Color(
+            Mathf.Clamp01(parent.color.r + redVariation),
+            Mathf.Clamp01(parent.color.g + greenVariation),
+            Mathf.Clamp01(parent.color.b + blueVariation),
+            1f
+        );
+
+        agent.ApplyTraits(
+            newSize,
+            newColor,
+            parent.id,
+            parent.successfulGenerations
+        );
     }
 
     void EndRound()
     {
         isRoundActive = false;
 
-        int survivedCells = 0;
+        List<CellLineage> survivors =
+            new List<CellLineage>();
 
         foreach (CellAgent cell in activeCells)
         {
             if (cell != null && cell.survived)
             {
-                survivedCells++;
+                CellLineage lineage =
+                    cell.GetLineage();
+
+                bool alreadyAdded = false;
+
+                foreach (CellLineage survivor in survivors)
+                {
+                    if (survivor.id == lineage.id)
+                    {
+                        alreadyAdded = true;
+                    }
+                }
+
+                if (!alreadyAdded)
+                {
+                    lineage.successfulGenerations++;
+
+                    survivors.Add(lineage);
+
+                    Debug.Log(
+                        "Linaje " +
+                        lineage.id +
+                        " sobrevivió. Generaciones consecutivas: " +
+                        lineage.successfulGenerations
+                    );
+                }
+            }
+        }
+
+        successfulLineages = survivors;
+
+        foreach (CellLineage lineage in successfulLineages)
+        {
+            if (lineage.successfulGenerations >= 4)
+            {
+                FinishGame(lineage);
+                return;
             }
         }
 
         Debug.Log(
-            "Ronda " + currentRound +
-            " terminada. Células sobrevivientes: " +
-            survivedCells
+            "Ronda " +
+            currentRound +
+            " terminada. Linajes sobrevivientes: " +
+            successfulLineages.Count
         );
 
         currentRound++;
@@ -175,9 +304,36 @@ public class GameManager : MonoBehaviour
         StartNewRound();
     }
 
+    void FinishGame(CellLineage adaptedLineage)
+    {
+        gameFinished = true;
+        isRoundActive = false;
+
+        if (roundText != null)
+        {
+            roundText.text =
+                "¡Célula adaptada! Linaje " +
+                adaptedLineage.id;
+        }
+
+        if (timerText != null)
+        {
+            timerText.text = "Adaptación completada";
+        }
+
+        Debug.Log(
+            "¡ADAPTACIÓN COMPLETADA! " +
+            "El linaje " +
+            adaptedLineage.id +
+            " sobrevivió durante 4 generaciones."
+        );
+
+        ClearActiveCells();
+    }
+
     public void OnCellClicked(CellAgent cell)
     {
-        if (!isRoundActive)
+        if (!isRoundActive || gameFinished)
         {
             return;
         }
@@ -196,9 +352,10 @@ public class GameManager : MonoBehaviour
         float viewX = Random.Range(0.1f, 0.9f);
         float viewY = Random.Range(0.1f, 0.9f);
 
-        Vector3 worldPos = mainCamera.ViewportToWorldPoint(
-            new Vector3(viewX, viewY, 10f)
-        );
+        Vector3 worldPos =
+            mainCamera.ViewportToWorldPoint(
+                new Vector3(viewX, viewY, 10f)
+            );
 
         worldPos.z = 0f;
 
@@ -222,7 +379,9 @@ public class GameManager : MonoBehaviour
     {
         if (scoreText != null)
         {
-            scoreText.text = "Puntos: " + score;
+            scoreText.text =
+                "Puntos: " +
+                score;
         }
     }
 }
