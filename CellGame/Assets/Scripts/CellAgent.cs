@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class CellAgent : MonoBehaviour
 {
-    [Header("Parámetros del Agente")]
+    [Header("Parámetros de la célula")]
     public float size = 1f;
     public Color color = Color.white;
     public bool survived = true;
@@ -14,7 +14,6 @@ public class CellAgent : MonoBehaviour
         spriteRenderer = GetComponent<SpriteRenderer>();
     }
 
-    // Aplica las características propuestas por el algoritmo de ML
     public void ApplyTraits(float newSize, Color newColor)
     {
         size = Mathf.Clamp(newSize, 0.4f, 2.5f);
@@ -26,10 +25,10 @@ public class CellAgent : MonoBehaviour
         {
             spriteRenderer.color = color;
         }
+
         survived = true;
     }
 
-    // El jugador hace clic en la célula para eliminarla
     void OnMouseDown()
     {
         survived = false;
