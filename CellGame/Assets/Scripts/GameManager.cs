@@ -23,12 +23,15 @@ public class GameManager : MonoBehaviour
     private int score = 0;
     private int currentRound = 1;
     private bool isRoundActive = false;
-    private bool gameFinished = false;
 
-    private int nextLineageId = 1;
+    private List<CellAgent> activeCells =
+        new List<CellAgent>();
 
-    private List<CellAgent> activeCells = new List<CellAgent>();
-    private List<CellLineage> successfulLineages = new List<CellLineage>();
+    private List<float> successfulSizes =
+        new List<float>();
+
+    private List<Color> successfulColors =
+        new List<Color>();
 
     void Awake()
     {
@@ -55,7 +58,7 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
-        if (!isRoundActive || gameFinished)
+        if (!isRoundActive)
         {
             return;
         }
@@ -78,17 +81,14 @@ public class GameManager : MonoBehaviour
 
     void StartNewRound()
     {
-        if (gameFinished)
-        {
-            return;
-        }
-
         currentTimer = roundDuration;
         isRoundActive = true;
 
         if (roundText != null)
         {
-            roundText.text = "Ronda: " + currentRound;
+            roundText.text =
+                "Ronda: " +
+                currentRound;
         }
 
         ChangeBackgroundColor();
@@ -102,7 +102,8 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        int environment = (currentRound - 1) % 4;
+        int environment =
+            (currentRound - 1) % 4;
 
         if (environment == 0)
         {
@@ -130,44 +131,54 @@ public class GameManager : MonoBehaviour
     {
         ClearActiveCells();
 
-        int cellCount = Random.Range(4, 8);
+        int cellCount =
+            Random.Range(4, 8);
 
         for (int i = 0; i < cellCount; i++)
         {
             GameObject selectedPrefab =
-                cellPrefabs[Random.Range(0, cellPrefabs.Length)];
+                cellPrefabs[
+                    Random.Range(
+                        0,
+                        cellPrefabs.Length
+                    )
+                ];
 
-            Vector3 spawnPosition = GetRandomScreenPosition();
+            Vector3 spawnPosition =
+                GetRandomScreenPosition();
 
-            GameObject newCellObj = Instantiate(
-                selectedPrefab,
-                spawnPosition,
-                Quaternion.identity
-            );
+            GameObject newCellObj =
+                Instantiate(
+                    selectedPrefab,
+                    spawnPosition,
+                    Quaternion.identity
+                );
 
             CellAgent agent =
                 newCellObj.GetComponent<CellAgent>();
 
             if (agent == null)
             {
-                agent = newCellObj.AddComponent<CellAgent>();
+                agent =
+                    newCellObj.AddComponent<CellAgent>();
             }
 
-            bool createFromSurvivor = false;
+            bool createFromSuccessfulCell =
+                false;
 
-            if (successfulLineages.Count > 0)
+            if (successfulSizes.Count > 0)
             {
                 float chance = Random.value;
 
                 if (chance < 0.7f)
                 {
-                    createFromSurvivor = true;
+                    createFromSuccessfulCell = true;
                 }
             }
 
-            if (createFromSurvivor)
+            if (createFromSuccessfulCell)
             {
-                CreateFromSuccessfulLineage(agent);
+                CreateFromSuccessfulCell(agent);
             }
             else
             {
@@ -180,39 +191,43 @@ public class GameManager : MonoBehaviour
 
     void CreateRandomCell(CellAgent agent)
     {
-        float randomSize = Random.Range(0.8f, 2.0f);
+        float randomSize =
+            Random.Range(0.8f, 2.0f);
 
-        Color randomColor = new Color(
-            Random.value,
-            Random.value,
-            Random.value,
-            1f
-        );
-
-        int newId = nextLineageId;
-        nextLineageId++;
+        Color randomColor =
+            new Color(
+                Random.value,
+                Random.value,
+                Random.value,
+                1f
+            );
 
         agent.ApplyTraits(
             randomSize,
-            randomColor,
-            newId,
-            0
+            randomColor
         );
     }
 
-    void CreateFromSuccessfulLineage(CellAgent agent)
+    void CreateFromSuccessfulCell(CellAgent agent)
     {
-        CellLineage parent =
-            successfulLineages[
-                Random.Range(0, successfulLineages.Count)
-            ];
+        int index =
+            Random.Range(
+                0,
+                successfulSizes.Count
+            );
+
+        float parentSize =
+            successfulSizes[index];
+
+        Color parentColor =
+            successfulColors[index];
 
         float sizeVariation =
             Random.Range(-0.15f, 0.15f);
 
         float newSize =
             Mathf.Clamp(
-                parent.size + sizeVariation,
+                parentSize + sizeVariation,
                 0.4f,
                 2.5f
             );
@@ -226,18 +241,23 @@ public class GameManager : MonoBehaviour
         float blueVariation =
             Random.Range(-0.10f, 0.10f);
 
-        Color newColor = new Color(
-            Mathf.Clamp01(parent.color.r + redVariation),
-            Mathf.Clamp01(parent.color.g + greenVariation),
-            Mathf.Clamp01(parent.color.b + blueVariation),
-            1f
-        );
+        Color newColor =
+            new Color(
+                Mathf.Clamp01(
+                    parentColor.r + redVariation
+                ),
+                Mathf.Clamp01(
+                    parentColor.g + greenVariation
+                ),
+                Mathf.Clamp01(
+                    parentColor.b + blueVariation
+                ),
+                1f
+            );
 
         agent.ApplyTraits(
             newSize,
-            newColor,
-            parent.id,
-            parent.successfulGenerations
+            newColor
         );
     }
 
@@ -245,58 +265,27 @@ public class GameManager : MonoBehaviour
     {
         isRoundActive = false;
 
-        List<CellLineage> survivors =
-            new List<CellLineage>();
+        successfulSizes.Clear();
+        successfulColors.Clear();
+
+        int survivedCells = 0;
 
         foreach (CellAgent cell in activeCells)
         {
             if (cell != null && cell.survived)
             {
-                CellLineage lineage =
-                    cell.GetLineage();
+                survivedCells++;
 
-                bool alreadyAdded = false;
-
-                foreach (CellLineage survivor in survivors)
-                {
-                    if (survivor.id == lineage.id)
-                    {
-                        alreadyAdded = true;
-                    }
-                }
-
-                if (!alreadyAdded)
-                {
-                    lineage.successfulGenerations++;
-
-                    survivors.Add(lineage);
-
-                    Debug.Log(
-                        "Linaje " +
-                        lineage.id +
-                        " sobrevivió. Generaciones consecutivas: " +
-                        lineage.successfulGenerations
-                    );
-                }
-            }
-        }
-
-        successfulLineages = survivors;
-
-        foreach (CellLineage lineage in successfulLineages)
-        {
-            if (lineage.successfulGenerations >= 4)
-            {
-                FinishGame(lineage);
-                return;
+                successfulSizes.Add(cell.size);
+                successfulColors.Add(cell.color);
             }
         }
 
         Debug.Log(
             "Ronda " +
             currentRound +
-            " terminada. Linajes sobrevivientes: " +
-            successfulLineages.Count
+            " terminada. Células sobrevivientes: " +
+            survivedCells
         );
 
         currentRound++;
@@ -304,36 +293,9 @@ public class GameManager : MonoBehaviour
         StartNewRound();
     }
 
-    void FinishGame(CellLineage adaptedLineage)
-    {
-        gameFinished = true;
-        isRoundActive = false;
-
-        if (roundText != null)
-        {
-            roundText.text =
-                "¡Célula adaptada! Linaje " +
-                adaptedLineage.id;
-        }
-
-        if (timerText != null)
-        {
-            timerText.text = "Adaptación completada";
-        }
-
-        Debug.Log(
-            "¡ADAPTACIÓN COMPLETADA! " +
-            "El linaje " +
-            adaptedLineage.id +
-            " sobrevivió durante 4 generaciones."
-        );
-
-        ClearActiveCells();
-    }
-
     public void OnCellClicked(CellAgent cell)
     {
-        if (!isRoundActive || gameFinished)
+        if (!isRoundActive)
         {
             return;
         }
@@ -349,12 +311,19 @@ public class GameManager : MonoBehaviour
 
     Vector3 GetRandomScreenPosition()
     {
-        float viewX = Random.Range(0.1f, 0.9f);
-        float viewY = Random.Range(0.1f, 0.9f);
+        float viewX =
+            Random.Range(0.1f, 0.9f);
+
+        float viewY =
+            Random.Range(0.1f, 0.9f);
 
         Vector3 worldPos =
             mainCamera.ViewportToWorldPoint(
-                new Vector3(viewX, viewY, 10f)
+                new Vector3(
+                    viewX,
+                    viewY,
+                    10f
+                )
             );
 
         worldPos.z = 0f;
