@@ -16,6 +16,9 @@ public class GameManager : MonoBehaviour
     public Camera mainCamera;
     public SpriteRenderer backgroundRenderer;
 
+    [Header("Sistema de Machine Learning")]
+    public AdaptiveMLSystem adaptiveML;
+
     [Header("Parámetros del Juego")]
     public float roundDuration = 10f;
 
@@ -26,12 +29,6 @@ public class GameManager : MonoBehaviour
 
     private List<CellAgent> activeCells =
         new List<CellAgent>();
-
-    private List<float> successfulSizes =
-        new List<float>();
-
-    private List<Color> successfulColors =
-        new List<Color>();
 
     void Awake()
     {
@@ -52,7 +49,14 @@ public class GameManager : MonoBehaviour
             mainCamera = Camera.main;
         }
 
+        if (adaptiveML == null)
+        {
+            adaptiveML =
+                GetComponent<AdaptiveMLSystem>();
+        }
+
         UpdateScoreUI();
+
         StartNewRound();
     }
 
@@ -69,7 +73,9 @@ public class GameManager : MonoBehaviour
         {
             timerText.text =
                 "Tiempo: " +
-                Mathf.CeilToInt(currentTimer).ToString() +
+                Mathf.CeilToInt(
+                    currentTimer
+                ).ToString() +
                 "s";
         }
 
@@ -108,22 +114,38 @@ public class GameManager : MonoBehaviour
         if (environment == 0)
         {
             backgroundRenderer.color =
-                new Color(0.15f, 0.45f, 0.20f);
+                new Color(
+                    0.15f,
+                    0.45f,
+                    0.20f
+                );
         }
         else if (environment == 1)
         {
             backgroundRenderer.color =
-                new Color(0.15f, 0.30f, 0.55f);
+                new Color(
+                    0.15f,
+                    0.30f,
+                    0.55f
+                );
         }
         else if (environment == 2)
         {
             backgroundRenderer.color =
-                new Color(0.45f, 0.45f, 0.45f);
+                new Color(
+                    0.45f,
+                    0.45f,
+                    0.45f
+                );
         }
         else
         {
             backgroundRenderer.color =
-                new Color(0.45f, 0.20f, 0.50f);
+                new Color(
+                    0.45f,
+                    0.20f,
+                    0.50f
+                );
         }
     }
 
@@ -134,7 +156,9 @@ public class GameManager : MonoBehaviour
         int cellCount =
             Random.Range(4, 8);
 
-        for (int i = 0; i < cellCount; i++)
+        for (int i = 0;
+             i < cellCount;
+             i++)
         {
             GameObject selectedPrefab =
                 cellPrefabs[
@@ -163,128 +187,93 @@ public class GameManager : MonoBehaviour
                     newCellObj.AddComponent<CellAgent>();
             }
 
-            bool createFromSuccessfulCell =
-                false;
-
-            if (successfulSizes.Count > 0)
-            {
-                float chance = Random.value;
-
-                if (chance < 0.7f)
-                {
-                    createFromSuccessfulCell = true;
-                }
-            }
-
-            if (createFromSuccessfulCell)
-            {
-                CreateFromSuccessfulCell(agent);
-            }
-            else
-            {
-                CreateRandomCell(agent);
-            }
+            CreateCellTraits(agent);
 
             activeCells.Add(agent);
         }
     }
 
-    void CreateRandomCell(CellAgent agent)
+    void CreateCellTraits(CellAgent agent)
     {
-        float randomSize =
-            Random.Range(0.8f, 2.0f);
+        float randomChance =
+            Random.value;
 
-        Color randomColor =
-            new Color(
-                Random.value,
-                Random.value,
-                Random.value,
-                1f
+        if (
+            adaptiveML != null &&
+            adaptiveML.GetExperienceCount() > 0 &&
+            randomChance >= 0.15f
+        )
+        {
+            float newSize;
+            Color newColor;
+
+            adaptiveML.GetNextTraits(
+                out newSize,
+                out newColor
             );
 
-        agent.ApplyTraits(
-            randomSize,
-            randomColor
-        );
-    }
+            agent.ApplyTraits(
+                newSize,
+                newColor
+            );
+        }
+        else
+        {
+            float randomSize =
+                Random.Range(
+                    0.7f,
+                    1.8f
+                );
 
-    void CreateFromSuccessfulCell(CellAgent agent)
-    {
-        int index =
-            Random.Range(
-                0,
-                successfulSizes.Count
+            Color randomColor =
+                new Color(
+                    Random.value,
+                    Random.value,
+                    Random.value,
+                    1f
+                );
+
+            agent.ApplyTraits(
+                randomSize,
+                randomColor
             );
 
-        float parentSize =
-            successfulSizes[index];
-
-        Color parentColor =
-            successfulColors[index];
-
-        float sizeVariation =
-            Random.Range(-0.15f, 0.15f);
-
-        float newSize =
-            Mathf.Clamp(
-                parentSize + sizeVariation,
-                0.4f,
-                2.5f
+            Debug.Log(
+                "ML: exploración aleatoria."
             );
-
-        float redVariation =
-            Random.Range(-0.10f, 0.10f);
-
-        float greenVariation =
-            Random.Range(-0.10f, 0.10f);
-
-        float blueVariation =
-            Random.Range(-0.10f, 0.10f);
-
-        Color newColor =
-            new Color(
-                Mathf.Clamp01(
-                    parentColor.r + redVariation
-                ),
-                Mathf.Clamp01(
-                    parentColor.g + greenVariation
-                ),
-                Mathf.Clamp01(
-                    parentColor.b + blueVariation
-                ),
-                1f
-            );
-
-        agent.ApplyTraits(
-            newSize,
-            newColor
-        );
+        }
     }
 
     void EndRound()
     {
         isRoundActive = false;
 
-        successfulSizes.Clear();
-        successfulColors.Clear();
-
         int survivedCells = 0;
 
         foreach (CellAgent cell in activeCells)
         {
-            if (cell != null && cell.survived)
+            if (
+                cell != null &&
+                cell.survived
+            )
             {
                 survivedCells++;
 
-                successfulSizes.Add(cell.size);
-                successfulColors.Add(cell.color);
+                if (adaptiveML != null)
+                {
+                    adaptiveML.RegisterSuccess(
+                        cell.size,
+                        cell.color
+                    );
+                }
             }
         }
 
         Debug.Log(
             "Ronda " +
             currentRound +
-            " terminada. Células sobrevivientes: " +
+            " terminada. " +
+            "Células sobrevivientes: " +
             survivedCells
         );
 
@@ -293,11 +282,20 @@ public class GameManager : MonoBehaviour
         StartNewRound();
     }
 
-    public void OnCellClicked(CellAgent cell)
+    public void OnCellClicked(
+        CellAgent cell)
     {
         if (!isRoundActive)
         {
             return;
+        }
+
+        if (adaptiveML != null)
+        {
+            adaptiveML.RegisterFailure(
+                cell.size,
+                cell.color
+            );
         }
 
         score += 10;
@@ -312,10 +310,16 @@ public class GameManager : MonoBehaviour
     Vector3 GetRandomScreenPosition()
     {
         float viewX =
-            Random.Range(0.1f, 0.9f);
+            Random.Range(
+                0.1f,
+                0.9f
+            );
 
         float viewY =
-            Random.Range(0.1f, 0.9f);
+            Random.Range(
+                0.1f,
+                0.9f
+            );
 
         Vector3 worldPos =
             mainCamera.ViewportToWorldPoint(
@@ -337,7 +341,9 @@ public class GameManager : MonoBehaviour
         {
             if (cell != null)
             {
-                Destroy(cell.gameObject);
+                Destroy(
+                    cell.gameObject
+                );
             }
         }
 
