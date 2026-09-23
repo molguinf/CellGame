@@ -1,3 +1,4 @@
+
 using UnityEngine;
 
 public class CellAgent : MonoBehaviour
@@ -9,34 +10,63 @@ public class CellAgent : MonoBehaviour
 
     private SpriteRenderer spriteRenderer;
 
+
     void Awake()
     {
-        spriteRenderer = GetComponent<SpriteRenderer>();
+        spriteRenderer =
+            GetComponent<SpriteRenderer>();
     }
 
-    public void ApplyTraits(float newSize, Color newColor)
+
+    // ==================================================
+    // APLICAR CARACTERÍSTICAS
+    // ==================================================
+
+    public void ApplyTraits(
+        float newSize,
+        Color newColor)
     {
-        size = Mathf.Clamp(newSize, 0.4f, 2.5f);
+        size =
+            Mathf.Clamp(
+                newSize,
+                0.4f,
+                2.5f
+            );
+
         color = newColor;
 
         transform.localScale =
-            new Vector3(size, size, 1f);
+            new Vector3(
+                size,
+                size,
+                1f
+            );
 
         if (spriteRenderer != null)
         {
-            spriteRenderer.color = color;
+            spriteRenderer.color =
+                color;
         }
 
         survived = true;
     }
 
+
+    // ==================================================
+    // CLIC DEL JUGADOR
+    // ==================================================
+
     void OnMouseDown()
     {
         survived = false;
 
-        if (GameManager.Instance != null)
+        if (
+            GameManager.Instance != null
+        )
         {
-            GameManager.Instance.OnCellClicked(this);
+            GameManager.Instance.OnCellClicked(
+                this
+            );
         }
 
         Destroy(gameObject);

@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 667306986061245819}
   - component: {fileID: 6097152440429244974}
   - component: {fileID: 3921558560085632504}
+  - component: {fileID: 2747220877812592109}
   m_Layer: 0
   m_Name: Cell1_Prefab
   m_TagString: Untagged
@@ -238,3 +239,20 @@ Rigidbody2D:
   m_SleepingMode: 1
   m_CollisionDetection: 0
   m_Constraints: 0
+--- !u!114 &2747220877812592109
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7966445102289269402}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 46017c1e03ca2f14081bab73b1313519, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Cell
+  size: 1
+  color: {r: 1, g: 1, b: 1, a: 1}
+  survived: 1
+  lineageId: 0
+  successfulGenerations: 0

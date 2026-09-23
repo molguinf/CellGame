@@ -14,13 +14,17 @@ public class GameManager : MonoBehaviour
     [Header("Configuración de la Escena")]
     public GameObject[] cellPrefabs;
     public Camera mainCamera;
-    public SpriteRenderer backgroundRenderer;
-
-    [Header("Sistema de Machine Learning")]
-    public AdaptiveMLSystem adaptiveML;
+    public AudioSource popAudioSource;
 
     [Header("Parámetros del Juego")]
     public float roundDuration = 10f;
+
+    [Header("Generación")]
+    public int minSimilarCells = 3;
+    public int maxSimilarCells = 4;
+    public int independentCells = 2;
+
+    public int maxCellsPerRound = 8;
 
     private float currentTimer;
     private int score = 0;
@@ -29,6 +33,12 @@ public class GameManager : MonoBehaviour
 
     private List<CellAgent> activeCells =
         new List<CellAgent>();
+
+    // Características de las células que sobrevivieron
+    // en la ronda anterior.
+    private List<CellTraits> previousSurvivors =
+        new List<CellTraits>();
+
 
     void Awake()
     {
@@ -42,6 +52,7 @@ public class GameManager : MonoBehaviour
         }
     }
 
+
     void Start()
     {
         if (mainCamera == null)
@@ -49,16 +60,11 @@ public class GameManager : MonoBehaviour
             mainCamera = Camera.main;
         }
 
-        if (adaptiveML == null)
-        {
-            adaptiveML =
-                GetComponent<AdaptiveMLSystem>();
-        }
-
         UpdateScoreUI();
 
         StartNewRound();
     }
+
 
     void Update()
     {
@@ -85,6 +91,7 @@ public class GameManager : MonoBehaviour
         }
     }
 
+
     void StartNewRound()
     {
         currentTimer = roundDuration;
@@ -97,171 +104,236 @@ public class GameManager : MonoBehaviour
                 currentRound;
         }
 
-        ChangeBackgroundColor();
         SpawnCellsForRound();
     }
 
-    void ChangeBackgroundColor()
-    {
-        if (backgroundRenderer == null)
-        {
-            return;
-        }
-
-        int environment =
-            (currentRound - 1) % 4;
-
-        if (environment == 0)
-        {
-            backgroundRenderer.color =
-                new Color(
-                    0.15f,
-                    0.45f,
-                    0.20f
-                );
-        }
-        else if (environment == 1)
-        {
-            backgroundRenderer.color =
-                new Color(
-                    0.15f,
-                    0.30f,
-                    0.55f
-                );
-        }
-        else if (environment == 2)
-        {
-            backgroundRenderer.color =
-                new Color(
-                    0.45f,
-                    0.45f,
-                    0.45f
-                );
-        }
-        else
-        {
-            backgroundRenderer.color =
-                new Color(
-                    0.45f,
-                    0.20f,
-                    0.50f
-                );
-        }
-    }
-
-    void SpawnCellsForRound()
+    private void SpawnCellsForRound()
     {
         ClearActiveCells();
 
-        int cellCount =
-            Random.Range(4, 8);
-
-        for (int i = 0;
-             i < cellCount;
-             i++)
+        if (previousSurvivors.Count == 0)
         {
-            GameObject selectedPrefab =
-                cellPrefabs[
-                    Random.Range(
-                        0,
-                        cellPrefabs.Length
-                    )
-                ];
+            int amount = Random.Range(4, 8);
 
-            Vector3 spawnPosition =
-                GetRandomScreenPosition();
-
-            GameObject newCellObj =
-                Instantiate(
-                    selectedPrefab,
-                    spawnPosition,
-                    Quaternion.identity
-                );
-
-            CellAgent agent =
-                newCellObj.GetComponent<CellAgent>();
-
-            if (agent == null)
+            if (amount > maxCellsPerRound)
             {
-                agent =
-                    newCellObj.AddComponent<CellAgent>();
+                amount = maxCellsPerRound;
             }
 
-            CreateCellTraits(agent);
+            for (int i = 0; i < amount; i++)
+            {
+                CreateIndependentCell();
+            }
 
-            activeCells.Add(agent);
+            return;
+        }
+
+        for (int i = 0; i < previousSurvivors.Count; i++)
+        {
+            int amount = Random.Range(minSimilarCells, maxSimilarCells + 1);
+
+            for (int j = 0; j < amount; j++)
+            {
+                if (activeCells.Count >= maxCellsPerRound)
+                {
+                    break;
+                }
+
+                CreateSimilarCell(previousSurvivors[i]);
+            }
+
+            if (activeCells.Count >= maxCellsPerRound)
+            {
+                break;
+            }
+        }
+
+        for (int i = 0; i < independentCells; i++)
+        {
+            if (activeCells.Count >= maxCellsPerRound)
+            {
+                break;
+            }
+
+            CreateIndependentCell();
         }
     }
 
-    void CreateCellTraits(CellAgent agent)
+    void CreateIndependentCell()
     {
-        float randomChance =
-            Random.value;
+        GameObject selectedPrefab =
+            cellPrefabs[
+                Random.Range(
+                    0,
+                    cellPrefabs.Length
+                )
+            ];
 
-        if (
-            adaptiveML != null &&
-            adaptiveML.GetExperienceCount() > 0 &&
-            randomChance >= 0.15f
-        )
-        {
-            float newSize;
-            Color newColor;
+        Vector3 spawnPosition =
+            GetRandomScreenPosition();
 
-            adaptiveML.GetNextTraits(
-                out newSize,
-                out newColor
+        GameObject newCellObj =
+            Instantiate(
+                selectedPrefab,
+                spawnPosition,
+                Quaternion.identity
             );
 
-            agent.ApplyTraits(
-                newSize,
-                newColor
+        CellAgent agent =
+            newCellObj.GetComponent<CellAgent>();
+
+        if (agent == null)
+        {
+            agent =
+                newCellObj.AddComponent<CellAgent>();
+        }
+
+        float randomSize =
+            Random.Range(
+                0.8f,
+                2.0f
+            );
+
+        Color randomColor =
+            new Color(
+                Random.value,
+                Random.value,
+                Random.value,
+                1f
+            );
+
+        agent.ApplyTraits(
+            randomSize,
+            randomColor
+        );
+
+        activeCells.Add(agent);
+    }
+
+    void CreateSimilarCell(
+        CellTraits parent)
+    {
+        GameObject selectedPrefab =
+            cellPrefabs[
+                Random.Range(
+                    0,
+                    cellPrefabs.Length
+                )
+            ];
+
+        Vector3 spawnPosition =
+            GetRandomScreenPosition();
+
+        GameObject newCellObj =
+            Instantiate(
+                selectedPrefab,
+                spawnPosition,
+                Quaternion.identity
+            );
+
+        CellAgent agent =
+            newCellObj.GetComponent<CellAgent>();
+
+        if (agent == null)
+        {
+            agent =
+                newCellObj.AddComponent<CellAgent>();
+        }
+
+        float newSize;
+        Color newColor;
+
+        if (AdaptiveMLSystem.Instance != null)
+        {
+            AdaptiveMLSystem.Instance.MutateTraits(
+                parent.size,
+                parent.color,
+                out newSize,
+                out newColor
             );
         }
         else
         {
-            float randomSize =
-                Random.Range(
-                    0.7f,
-                    1.8f
+            newSize =
+                Mathf.Clamp(
+                    parent.size +
+                    Random.Range(
+                        -0.15f,
+                        0.15f
+                    ),
+                    0.4f,
+                    2.5f
                 );
 
-            Color randomColor =
+            newColor =
                 new Color(
-                    Random.value,
-                    Random.value,
-                    Random.value,
+                    Mathf.Clamp01(
+                        parent.color.r +
+                        Random.Range(
+                            -0.10f,
+                            0.10f
+                        )
+                    ),
+                    Mathf.Clamp01(
+                        parent.color.g +
+                        Random.Range(
+                            -0.10f,
+                            0.10f
+                        )
+                    ),
+                    Mathf.Clamp01(
+                        parent.color.b +
+                        Random.Range(
+                            -0.10f,
+                            0.10f
+                        )
+                    ),
                     1f
                 );
-
-            agent.ApplyTraits(
-                randomSize,
-                randomColor
-            );
-
-            Debug.Log(
-                "ML: exploración aleatoria."
-            );
         }
+
+        agent.ApplyTraits(
+            newSize,
+            newColor
+        );
+
+        activeCells.Add(agent);
     }
 
     void EndRound()
     {
         isRoundActive = false;
 
-        int survivedCells = 0;
+        previousSurvivors.Clear();
 
-        foreach (CellAgent cell in activeCells)
+        foreach (
+            CellAgent cell
+            in activeCells
+        )
         {
             if (
                 cell != null &&
                 cell.survived
             )
             {
-                survivedCells++;
+                CellTraits survivor =
+                    new CellTraits(
+                        cell.size,
+                        cell.color,
+                        10f
+                    );
 
-                if (adaptiveML != null)
+                previousSurvivors.Add(
+                    survivor
+                );
+
+
+                // Informar al sistema de aprendizaje.
+                if (
+                    AdaptiveMLSystem.Instance != null
+                )
                 {
-                    adaptiveML.RegisterSuccess(
+                    AdaptiveMLSystem.Instance.RecordSurvivor(
                         cell.size,
                         cell.color
                     );
@@ -269,18 +341,24 @@ public class GameManager : MonoBehaviour
             }
         }
 
+
         Debug.Log(
-            "Ronda " +
+            "RONDA " +
             currentRound +
-            " terminada. " +
-            "Células sobrevivientes: " +
-            survivedCells
+            " TERMINADA."
         );
+
+        Debug.Log(
+            "Supervivientes: " +
+            previousSurvivors.Count
+        );
+
 
         currentRound++;
 
         StartNewRound();
     }
+
 
     public void OnCellClicked(
         CellAgent cell)
@@ -290,21 +368,43 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        if (adaptiveML != null)
+        if (cell == null)
         {
-            adaptiveML.RegisterFailure(
-                cell.size,
-                cell.color
-            );
+            return;
         }
+        if (popAudioSource != null)
+        {
+            popAudioSource.Play();
+        }
+        // La célula fue eliminada.
+        cell.survived = false;
 
         score += 10;
 
         UpdateScoreUI();
 
-        cell.survived = false;
-
         activeCells.Remove(cell);
+
+
+        // Registrar el fracaso en el sistema
+        // de aprendizaje.
+        if (
+            AdaptiveMLSystem.Instance != null
+        )
+        {
+            AdaptiveMLSystem.Instance.RecordFailure(
+                cell.size,
+                cell.color
+            );
+        }
+
+        Debug.Log(
+            "CÉLULA ELIMINADA -> " +
+            "Tamaño: " +
+            cell.size +
+            " | Color: " +
+            cell.color
+        );
     }
 
     Vector3 GetRandomScreenPosition()
@@ -334,10 +434,12 @@ public class GameManager : MonoBehaviour
 
         return worldPos;
     }
-
     void ClearActiveCells()
     {
-        foreach (CellAgent cell in activeCells)
+        foreach (
+            CellAgent cell
+            in activeCells
+        )
         {
             if (cell != null)
             {

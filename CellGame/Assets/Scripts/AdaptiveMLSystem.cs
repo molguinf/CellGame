@@ -1,422 +1,395 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+
+// ======================================================
+// CARACTERÍSTICAS DE UNA EXPERIENCIA
+// ======================================================
+
+[System.Serializable]
+public class CellTraits
+{
+    public float size;
+    public Color color;
+    public float fitness;
+
+
+    public CellTraits(
+        float newSize,
+        Color newColor,
+        float newFitness)
+    {
+        size = newSize;
+        color = newColor;
+        fitness = newFitness;
+    }
+}
+
+
+// ======================================================
+// SISTEMA DE APRENDIZAJE
+// ======================================================
+
 public class AdaptiveMLSystem : MonoBehaviour
 {
-    [Header("Aprendizaje")]
-    public float explorationChance = 0.15f;
+    public static AdaptiveMLSystem Instance;
 
-    private List<int> colorStates =
-        new List<int>();
 
-    private List<int> sizeStates =
-        new List<int>();
+    [Header("Exploración")]
+    public float explorationRate = 0.30f;
 
-    private List<float> rewards =
-        new List<float>();
 
-    // 0 = rojo
-    // 1 = verde
-    // 2 = azul
-    // 3 = amarillo
-    // 4 = morado
-    // 5 = gris
-    // 6 = cian
-    // 7 = naranja
+    [Header("Límites de tamaño")]
+    public float minSize = 0.4f;
+    public float maxSize = 2.5f;
 
-    Color[] possibleColors =
+
+    [Header("Memoria")]
+    public int maxMemory = 20;
+
+
+    // Experiencias positivas.
+    private List<CellTraits> survivorsHistory =
+        new List<CellTraits>();
+
+
+    // Experiencias negativas.
+    private List<CellTraits> failuresHistory =
+        new List<CellTraits>();
+
+
+    void Awake()
     {
-        Color.red,
-        Color.green,
-        Color.blue,
-        Color.yellow,
-        new Color(0.6f, 0.1f, 0.8f),
-        Color.gray,
-        Color.cyan,
-        new Color(1f, 0.5f, 0f)
-    };
-
-    // 0 = pequeña
-    // 1 = mediana
-    // 2 = grande
-
-    float[] possibleSizes =
-    {
-        0.7f,
-        1.2f,
-        1.8f
-    };
-
-    public void RegisterSuccess(
-        float size,
-        Color color)
-    {
-        int colorIndex =
-            GetClosestColorIndex(color);
-
-        int sizeIndex =
-            GetClosestSizeIndex(size);
-
-        int experienceIndex =
-            FindExperience(
-                colorIndex,
-                sizeIndex
-            );
-
-        if (experienceIndex == -1)
+        if (Instance == null)
         {
-            colorStates.Add(colorIndex);
-            sizeStates.Add(sizeIndex);
-            rewards.Add(3f);
+            Instance = this;
         }
         else
         {
-            rewards[experienceIndex] += 3f;
+            Destroy(gameObject);
         }
-
-        Debug.Log(
-            "ML ÉXITO -> Color: " +
-            GetColorName(colorIndex) +
-            " | Tamaño: " +
-            GetSizeName(sizeIndex) +
-            " | Recompensa: " +
-            GetExperienceReward(
-                colorIndex,
-                sizeIndex
-            )
-        );
     }
 
-    public void RegisterFailure(
+
+    // ==================================================
+    // REGISTRAR SUPERVIVIENTE
+    // ==================================================
+
+    public void RecordSurvivor(
         float size,
         Color color)
     {
-        int colorIndex =
-            GetClosestColorIndex(color);
-
-        int sizeIndex =
-            GetClosestSizeIndex(size);
-
-        int experienceIndex =
-            FindExperience(
-                colorIndex,
-                sizeIndex
+        CellTraits experience =
+            new CellTraits(
+                size,
+                color,
+                10f
             );
 
-        if (experienceIndex == -1)
-        {
-            colorStates.Add(colorIndex);
-            sizeStates.Add(sizeIndex);
-            rewards.Add(-1f);
-        }
-        else
-        {
-            rewards[experienceIndex] -= 1f;
+        survivorsHistory.Add(
+            experience
+        );
 
-            if (rewards[experienceIndex] < -5f)
-            {
-                rewards[experienceIndex] = -5f;
-            }
+
+        // La exploración disminuye lentamente
+        // conforme se acumulan experiencias.
+        explorationRate =
+            Mathf.Max(
+                0.05f,
+                explorationRate - 0.02f
+            );
+
+
+        if (
+            survivorsHistory.Count >
+            maxMemory
+        )
+        {
+            survivorsHistory.RemoveAt(0);
         }
+
 
         Debug.Log(
-            "ML FALLO -> Color: " +
-            GetColorName(colorIndex) +
-            " | Tamaño: " +
-            GetSizeName(sizeIndex) +
-            " | Recompensa: " +
-            GetExperienceReward(
-                colorIndex,
-                sizeIndex
-            )
+            "ML ÉXITO -> " +
+            "Tamaño: " +
+            size +
+            " | Color: " +
+            color +
+            " | Recompensa: +10"
         );
     }
 
-    public void GetNextTraits(
+
+    // ==================================================
+    // REGISTRAR FRACASO
+    // ==================================================
+
+    public void RecordFailure(
+        float size,
+        Color color)
+    {
+        CellTraits experience =
+            new CellTraits(
+                size,
+                color,
+                -5f
+            );
+
+        failuresHistory.Add(
+            experience
+        );
+
+
+        if (
+            failuresHistory.Count >
+            maxMemory
+        )
+        {
+            failuresHistory.RemoveAt(0);
+        }
+
+
+        Debug.Log(
+            "ML FALLO -> " +
+            "Tamaño: " +
+            size +
+            " | Color: " +
+            color +
+            " | Penalización: -5"
+        );
+    }
+
+
+    // ==================================================
+    // MUTAR CARACTERÍSTICAS DE UN SUPERVIVIENTE
+    // ==================================================
+
+    public void MutateTraits(
+        float parentSize,
+        Color parentColor,
         out float newSize,
         out Color newColor)
     {
-        // Al principio o durante la exploración,
-        // prueba una combinación nueva.
-        if (
-            colorStates.Count == 0 ||
-            Random.value < explorationChance
-        )
-        {
-            int randomColor =
-                Random.Range(
-                    0,
-                    possibleColors.Length
-                );
+        // ----------------------------------------------
+        // MUTACIÓN DEL TAMAÑO
+        // ----------------------------------------------
 
-            int randomSize =
-                Random.Range(
-                    0,
-                    possibleSizes.Length
-                );
-
-            newColor =
-                possibleColors[randomColor];
-
-            newSize =
-                possibleSizes[randomSize];
-
-            Debug.Log(
-                "ML EXPLORACIÓN -> " +
-                GetColorName(randomColor) +
-                " + " +
-                GetSizeName(randomSize)
+        float sizeVariation =
+            Random.Range(
+                -0.15f,
+                0.15f
             );
 
-            return;
-        }
+        newSize =
+            Mathf.Clamp(
+                parentSize +
+                sizeVariation,
+                minSize,
+                maxSize
+            );
 
-        int bestExperience =
-            GetBestExperience();
 
-        int bestColor =
-            colorStates[bestExperience];
+        // ----------------------------------------------
+        // MUTACIÓN DEL COLOR
+        // ----------------------------------------------
 
-        int bestSize =
-            sizeStates[bestExperience];
+        float colorVariation =
+            0.10f;
+
+        float red =
+            parentColor.r +
+            Random.Range(
+                -colorVariation,
+                colorVariation
+            );
+
+        float green =
+            parentColor.g +
+            Random.Range(
+                -colorVariation,
+                colorVariation
+            );
+
+        float blue =
+            parentColor.b +
+            Random.Range(
+                -colorVariation,
+                colorVariation
+            );
+
 
         newColor =
-            possibleColors[bestColor];
+            new Color(
+                Mathf.Clamp01(red),
+                Mathf.Clamp01(green),
+                Mathf.Clamp01(blue),
+                1f
+            );
 
-        newSize =
-            possibleSizes[bestSize];
 
         Debug.Log(
-            "ML APRENDIZAJE -> " +
-            GetColorName(bestColor) +
-            " + " +
-            GetSizeName(bestSize) +
-            " | Recompensa: " +
-            rewards[bestExperience]
+            "ML MUTACIÓN -> " +
+            "Características similares " +
+            "al superviviente."
         );
     }
 
-    int GetBestExperience()
+
+    // ==================================================
+    // OBTENER UNA EXPERIENCIA APRENDIDA
+    // ==================================================
+
+    public CellTraits GetBestExperience()
     {
+        if (
+            survivorsHistory.Count == 0
+        )
+        {
+            return null;
+        }
+
+
+        // ----------------------------------------------
+        // EXPLORACIÓN
+        // ----------------------------------------------
+
+        if (
+            Random.value <
+            explorationRate
+        )
+        {
+            Debug.Log(
+                "ML EXPLORACIÓN -> " +
+                "Se probarán características nuevas."
+            );
+
+            return null;
+        }
+
+
+        // ----------------------------------------------
+        // BUSCAR MEJOR EXPERIENCIA
+        // ----------------------------------------------
+
         int bestIndex = 0;
+
 
         for (
             int i = 1;
-            i < rewards.Count;
+            i < survivorsHistory.Count;
             i++
         )
         {
             if (
-                rewards[i] >
-                rewards[bestIndex]
+                survivorsHistory[i].fitness >
+                survivorsHistory[bestIndex].fitness
             )
             {
                 bestIndex = i;
             }
         }
 
-        return bestIndex;
+
+        CellTraits bestExperience =
+            survivorsHistory[bestIndex];
+
+
+        Debug.Log(
+            "ML APRENDIZAJE -> " +
+            "Se utilizará una experiencia exitosa."
+        );
+
+
+        return bestExperience;
     }
 
-    int FindExperience(
-        int colorIndex,
-        int sizeIndex)
-    {
-        for (
-            int i = 0;
-            i < colorStates.Count;
-            i++
-        )
-        {
-            if (
-                colorStates[i] == colorIndex &&
-                sizeStates[i] == sizeIndex
-            )
-            {
-                return i;
-            }
-        }
 
-        return -1;
-    }
+    // ==================================================
+    // GENERAR CARACTERÍSTICAS INDEPENDIENTES
+    // ==================================================
 
-    float GetExperienceReward(
-        int colorIndex,
-        int sizeIndex)
+    public CellTraits GenerateIndependentTraits()
     {
-        int index =
-            FindExperience(
-                colorIndex,
-                sizeIndex
+        float randomSize =
+            Random.Range(
+                minSize,
+                maxSize
             );
 
-        if (index == -1)
-        {
-            return 0f;
-        }
 
-        return rewards[index];
-    }
-
-    int GetClosestColorIndex(Color color)
-    {
-        int closestIndex = 0;
-
-        float smallestDistance =
-            GetColorDistance(
-                color,
-                possibleColors[0]
+        Color randomColor =
+            new Color(
+                Random.value,
+                Random.value,
+                Random.value,
+                1f
             );
 
-        for (
-            int i = 1;
-            i < possibleColors.Length;
-            i++
-        )
-        {
-            float distance =
-                GetColorDistance(
-                    color,
-                    possibleColors[i]
-                );
 
-            if (
-                distance <
-                smallestDistance
-            )
-            {
-                smallestDistance =
-                    distance;
+        Debug.Log(
+            "ML EXPLORACIÓN -> " +
+            "Nueva célula independiente."
+        );
 
-                closestIndex = i;
-            }
-        }
 
-        return closestIndex;
+        return new CellTraits(
+            randomSize,
+            randomColor,
+            0f
+        );
     }
 
-    float GetColorDistance(
+
+    // ==================================================
+    // DISTANCIA ENTRE DOS COLORES
+    // ==================================================
+
+    public float GetColorDistance(
         Color first,
         Color second)
     {
-        float red =
-            Mathf.Abs(
-                first.r -
-                second.r
+        float redDifference =
+            first.r -
+            second.r;
+
+        float greenDifference =
+            first.g -
+            second.g;
+
+        float blueDifference =
+            first.b -
+            second.b;
+
+
+        float distance =
+            Mathf.Sqrt(
+                redDifference *
+                redDifference +
+
+                greenDifference *
+                greenDifference +
+
+                blueDifference *
+                blueDifference
             );
 
-        float green =
-            Mathf.Abs(
-                first.g -
-                second.g
-            );
 
-        float blue =
-            Mathf.Abs(
-                first.b -
-                second.b
-            );
-
-        return red + green + blue;
+        return distance;
     }
 
-    int GetClosestSizeIndex(
-        float size)
+
+    // ==================================================
+    // OBTENER CANTIDAD DE EXPERIENCIAS
+    // ==================================================
+
+    public int GetSurvivorMemoryCount()
     {
-        int closestIndex = 0;
-
-        float smallestDistance =
-            Mathf.Abs(
-                size -
-                possibleSizes[0]
-            );
-
-        for (
-            int i = 1;
-            i < possibleSizes.Length;
-            i++
-        )
-        {
-            float distance =
-                Mathf.Abs(
-                    size -
-                    possibleSizes[i]
-                );
-
-            if (
-                distance <
-                smallestDistance
-            )
-            {
-                smallestDistance =
-                    distance;
-
-                closestIndex = i;
-            }
-        }
-
-        return closestIndex;
+        return survivorsHistory.Count;
     }
 
-    string GetColorName(
-        int colorIndex)
+
+    public int GetFailureMemoryCount()
     {
-        if (colorIndex == 0)
-        {
-            return "ROJO";
-        }
-
-        if (colorIndex == 1)
-        {
-            return "VERDE";
-        }
-
-        if (colorIndex == 2)
-        {
-            return "AZUL";
-        }
-
-        if (colorIndex == 3)
-        {
-            return "AMARILLO";
-        }
-
-        if (colorIndex == 4)
-        {
-            return "MORADO";
-        }
-
-        if (colorIndex == 5)
-        {
-            return "GRIS";
-        }
-
-        if (colorIndex == 6)
-        {
-            return "CIAN";
-        }
-
-        return "NARANJA";
-    }
-
-    string GetSizeName(
-        int sizeIndex)
-    {
-        if (sizeIndex == 0)
-        {
-            return "PEQUEÑA";
-        }
-
-        if (sizeIndex == 1)
-        {
-            return "MEDIANA";
-        }
-
-        return "GRANDE";
-    }
-
-    public int GetExperienceCount()
-    {
-        return colorStates.Count;
+        return failuresHistory.Count;
     }
 }
